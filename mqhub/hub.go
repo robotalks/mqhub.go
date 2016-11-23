@@ -15,6 +15,11 @@ type Message interface {
 	As(interface{}) error
 }
 
+// EncodedPayload represent an already encoded message
+type EncodedPayload interface {
+	Payload() ([]byte, error)
+}
+
 // Future represent an async operation
 type Future interface {
 	Wait() error
@@ -28,14 +33,6 @@ type MessageSink interface {
 // MessageSource emits messages
 type MessageSource interface {
 	SinkMessage(MessageSink)
-}
-
-// MessageSinkFunc is func form of MessageSink
-type MessageSinkFunc func(Message) Future
-
-// ConsumeMessage implements MessageSink
-func (f MessageSinkFunc) ConsumeMessage(msg Message) Future {
-	return f(msg)
 }
 
 // Identity represents an object with ID

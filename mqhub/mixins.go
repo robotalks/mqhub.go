@@ -35,6 +35,11 @@ func (c *CompositeBase) AddComponent(comp Component) {
 	c.components = append(c.components, comp)
 }
 
+// AddComponents add components
+func (c *CompositeBase) AddComponents(comps ...Component) {
+	c.components = append(c.components, comps...)
+}
+
 // ChanMsgSink is a MessageSink and emits message to a chan
 type ChanMsgSink struct {
 	C chan Message

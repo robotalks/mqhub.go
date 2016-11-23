@@ -4,6 +4,18 @@ import (
 	"context"
 )
 
+// MessageSinkFunc is func form of MessageSink
+type MessageSinkFunc func(Message) Future
+
+// ConsumeMessage implements MessageSink
+func (f MessageSinkFunc) ConsumeMessage(msg Message) Future {
+	future := f(msg)
+	if future == nil {
+		future = &ImmediateFuture{}
+	}
+	return future
+}
+
 // DataPoint implements Endpoint for a data point
 type DataPoint struct {
 	Name   string
@@ -37,7 +49,11 @@ func (p *DataPoint) Update(state interface{}) Future {
 	if sink == nil {
 		return &ImmediateFuture{Error: ErrNoMessageSink}
 	}
-	return p.Sink.ConsumeMessage(MakeMsg(state, p.Retain))
+	msg, ok := state.(Message)
+	if !ok {
+		msg = MakeMsg(state, p.Retain)
+	}
+	return p.Sink.ConsumeMessage(msg)
 }
 
 // Reactor implements Endpoint for a reactor to an update
@@ -59,6 +75,17 @@ func (a *Reactor) ID() string {
 // ConsumeMessage implements MessageSink
 func (a *Reactor) ConsumeMessage(msg Message) Future {
 	return a.Handler.ConsumeMessage(msg)
+}
+
+// Do sets the message handler
+func (a *Reactor) Do(sink MessageSink) *Reactor {
+	a.Handler = sink
+	return a
+}
+
+// DoFunc is same as Do but accepts a func
+func (a *Reactor) DoFunc(handler MessageSinkFunc) *Reactor {
+	return a.Do(handler)
 }
 
 // ContextRunner defines a runner accepts a context

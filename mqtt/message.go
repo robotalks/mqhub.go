@@ -36,10 +36,15 @@ func (m *Message) As(out interface{}) error {
 	return nil
 }
 
+// Payload implements EncodedPayload
+func (m *Message) Payload() ([]byte, error) {
+	return m.raw.Payload(), nil
+}
+
 // Encode encodes original message into bytes
 func Encode(msg mqhub.Message) ([]byte, error) {
-	if m, ok := msg.(*Message); ok {
-		return m.raw.Payload(), nil
+	if p, ok := msg.(mqhub.EncodedPayload); ok {
+		return p.Payload()
 	}
 	if v, ok := msg.Value(); ok {
 		return json.Marshal(v)
