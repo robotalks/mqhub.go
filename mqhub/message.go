@@ -35,3 +35,26 @@ func MsgFrom(v interface{}) *OriginMsg {
 func StateFrom(v interface{}) *OriginMsg {
 	return MakeMsg(v, true)
 }
+
+// StreamMessage implements Message with raw bytes
+type StreamMessage []byte
+
+// Value implements mqhub.Message
+func (m StreamMessage) Value() (interface{}, bool) {
+	return m, true
+}
+
+// IsState implements Message
+func (m StreamMessage) IsState() bool {
+	return false
+}
+
+// As implements Message
+func (m StreamMessage) As(out interface{}) error {
+	return nil
+}
+
+// Payload implements EncodedPayload
+func (m StreamMessage) Payload() ([]byte, error) {
+	return m, nil
+}
