@@ -8,6 +8,7 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/robotalks/mqhub.go/mqhub"
+	"github.com/robotalks/mqhub.go/utils"
 )
 
 // Options defines configuration for connection
@@ -55,6 +56,9 @@ func (o *Options) clientOptions() *paho.ClientOptions {
 	opts.Username = o.Username
 	opts.Password = o.Password
 	opts.ProtocolVersion = 3
+	if opts.ClientID == "" {
+		opts.ClientID = utils.UniqueID()
+	}
 	return opts
 }
 

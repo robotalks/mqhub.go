@@ -1,0 +1,30 @@
+---
+format: hypermake.v0
+
+name: mqhub.go
+description: Message Hub for Go
+
+targets:
+  vendor:
+    description: fetch dependencies for Go pkg
+    watches:
+      - vendor/manifest
+    cmds:
+      - gvt restore
+
+  test:
+    description: run tests
+    after:
+      - vendor
+    always: true
+    cmds:
+      - go test ./mqhub/... ./mqtt/... ./utils/...
+
+settings:
+  default-targets:
+    - build
+  exec-target: vendor
+  exec-shell: /bin/bash
+  docker:
+    image: 'robotalks/tbus-toolchain:latest'
+    src-volume: /go/src/github.com/robotalks/mqhub.go

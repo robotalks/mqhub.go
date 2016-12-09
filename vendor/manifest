@@ -21,6 +21,14 @@
 			"branch": "master",
 			"path": "/difflib"
 		},
+        {
+			"importpath": "github.com/rs/xid",
+			"repository": "https://github.com/rs/xid",
+			"vcs": "git",
+			"revision": "057f3c928c207d1e7e318929eeac93bb46e319e3",
+			"branch": "master",
+			"notests": true
+		},
 		{
 			"importpath": "github.com/stretchr/objx",
 			"repository": "https://github.com/stretchr/objx",
