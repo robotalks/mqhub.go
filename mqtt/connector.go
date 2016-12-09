@@ -94,6 +94,12 @@ func (c *Connector) Connect() mqhub.Future {
 	return &Future{token: c.Client.Connect()}
 }
 
+// Close implements io.Closer
+func (c *Connector) Close() error {
+	c.Client.Disconnect(0)
+	return nil
+}
+
 // Publish implements Publisher
 func (c *Connector) Publish(comp mqhub.Component) (*Publication, error) {
 	pub := newPublication(c, comp)

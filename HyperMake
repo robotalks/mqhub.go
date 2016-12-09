@@ -18,7 +18,7 @@ targets:
       - vendor
     always: true
     cmds:
-      - go test ./mqhub/... ./mqtt/... ./utils/...
+      - go test -v ./mqhub/... ./mqtt/... ./utils/...
 
 settings:
   default-targets:
