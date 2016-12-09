@@ -21,7 +21,7 @@ func NewComp0(id string) *Comp0 {
 		actor0: mqhub.Reactor{Name: "a"},
 	}
 	c.SetID(id)
-	c.actor0.Handler = mqhub.MessageSinkFunc(c.actor)
+	c.actor0.Handler = mqhub.MessageSinkAs(c.actor)
 	return c
 }
 
@@ -29,12 +29,8 @@ func (c *Comp0) Endpoints() []mqhub.Endpoint {
 	return []mqhub.Endpoint{&c.state0, &c.state1, &c.actor0}
 }
 
-func (c *Comp0) actor(msg mqhub.Message) mqhub.Future {
-	var state int
-	if err := msg.As(&state); err != nil {
-		return &mqhub.ImmediateFuture{Error: err}
-	}
-	return c.state0.Update(state)
+func (c *Comp0) actor(state int) {
+	c.state0.Update(state)
 }
 
 type Pub0 struct {

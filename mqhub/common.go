@@ -2,6 +2,7 @@ package mqhub
 
 import (
 	"context"
+	"reflect"
 )
 
 // MessageSinkFunc is func form of MessageSink
@@ -14,6 +15,34 @@ func (f MessageSinkFunc) ConsumeMessage(msg Message) Future {
 		future = &ImmediateFuture{}
 	}
 	return future
+}
+
+// MessageSinkAs converts a func with arbitrary parameter to MessageSink
+func MessageSinkAs(handler interface{}) MessageSink {
+	v := reflect.ValueOf(handler)
+	if v.Kind() != reflect.Func {
+		panic("handler must be a func")
+	}
+	t := v.Type()
+	switch t.NumIn() {
+	case 0:
+		return MessageSinkFunc(func(_ Message) Future {
+			v.Call(nil)
+			return &ImmediateFuture{}
+		})
+	case 1:
+		paramType := t.In(0)
+		return MessageSinkFunc(func(msg Message) Future {
+			val := reflect.New(paramType)
+			err := msg.As(val.Interface())
+			if err == nil {
+				v.Call([]reflect.Value{val.Elem()})
+			}
+			return &ImmediateFuture{Error: err}
+		})
+	default:
+		panic("no more than 1 parameter is allowed")
+	}
 }
 
 // DataPoint implements Endpoint for a data point
@@ -65,6 +94,11 @@ type Reactor struct {
 // ReactorFunc creates a Reactor from MessageSinkFunc
 func ReactorFunc(name string, handler MessageSinkFunc) *Reactor {
 	return &Reactor{Name: name, Handler: handler}
+}
+
+// ReactorAs accepts a func with arbitrary parameter
+func ReactorAs(name string, handler interface{}) *Reactor {
+	return &Reactor{Name: name, Handler: MessageSinkAs(handler)}
 }
 
 // ID implements Endpoint
