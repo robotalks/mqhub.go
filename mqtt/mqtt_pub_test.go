@@ -56,12 +56,12 @@ func (p *Pub0) Endpoints() []mqhub.Endpoint {
 func TestPublication(t *testing.T) {
 	a := assert.New(t)
 	pub0 := NewPub0()
-	host := TestEnv.NewConnector("publication-pub")
-	if !a.NoError(host.Connect().Wait()) {
+	host, err := TestEnv.NewConnector("publication-pub")
+	if !a.NoError(err) || !a.NoError(host.Connect().Wait()) {
 		return
 	}
 
-	_, err := host.Publish(pub0)
+	_, err = host.Publish(pub0)
 	if !a.NoError(err) {
 		return
 	}
@@ -69,8 +69,8 @@ func TestPublication(t *testing.T) {
 	a.NoError(pub0.Comp0.state0.Update(2).Wait())
 	a.NoError(pub0.Comp0.state1.Update(20).Wait())
 
-	client := TestEnv.NewConnector("publication-client")
-	if !a.NoError(client.Connect().Wait()) {
+	client, err := TestEnv.NewConnector("publication-client")
+	if !a.NoError(err) || !a.NoError(client.Connect().Wait()) {
 		return
 	}
 

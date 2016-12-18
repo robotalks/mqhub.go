@@ -4,17 +4,19 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"testing"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
-	mqtt "github.com/robotalks/mqhub.go/mqtt"
+	"github.com/robotalks/mqhub.go/mqhub"
+	_ "github.com/robotalks/mqhub.go/mqtt"
 )
 
 type EnvBuilder interface {
 	Setup() error
 	TearDown() error
-	NewConnector(id string) *mqtt.Connector
+	NewConnector(id string) (mqhub.Connector, error)
 }
 
 type RemoteEnvBuilder struct {
@@ -33,8 +35,8 @@ func (b *RemoteEnvBuilder) TearDown() error {
 	return nil
 }
 
-func (b *RemoteEnvBuilder) NewConnector(id string) *mqtt.Connector {
-	return mqtt.NewConnector(mqtt.NewOptions().AddServer(b.serverURL).SetClientID(id))
+func (b *RemoteEnvBuilder) NewConnector(id string) (mqhub.Connector, error) {
+	return mqhub.NewConnector("mqtt+" + b.serverURL + "?client-id=" + url.QueryEscape(id))
 }
 
 var (

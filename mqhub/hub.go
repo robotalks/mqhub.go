@@ -63,6 +63,14 @@ type Composer interface {
 	AddComponent(Component)
 }
 
+// Connector defines a general connector to message source/bus
+type Connector interface {
+	io.Closer
+	Connect() Future
+	Publish(Component) (Publication, error)
+	Describe(componentID string) Descriptor
+}
+
 // Publisher exposes components to hub
 type Publisher interface {
 	Publish(Component) (Publication, error)

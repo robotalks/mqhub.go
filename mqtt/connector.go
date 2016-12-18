@@ -101,7 +101,7 @@ func (c *Connector) Close() error {
 }
 
 // Publish implements Publisher
-func (c *Connector) Publish(comp mqhub.Component) (*Publication, error) {
+func (c *Connector) Publish(comp mqhub.Component) (mqhub.Publication, error) {
 	pub := newPublication(c, comp)
 	c.lock.Lock()
 	c.exports = append(c.exports, pub)
@@ -115,7 +115,7 @@ func (c *Connector) Publish(comp mqhub.Component) (*Publication, error) {
 }
 
 // Describe creates a descriptor
-func (c *Connector) Describe(componentID string) *Descriptor {
+func (c *Connector) Describe(componentID string) mqhub.Descriptor {
 	return &Descriptor{
 		ComponentID: componentID,
 		Topic:       c.topicPrefix + componentID,
@@ -152,4 +152,47 @@ func (c *Connector) removePub(pub *Publication) {
 		}
 	}
 	c.lock.Unlock()
+}
+
+// ConnectorFactory implements mqhub.ConnectorFactory
+func ConnectorFactory(URL url.URL) (mqhub.Connector, error) {
+	opts := NewOptions()
+	if strings.HasPrefix(URL.Scheme, Protocol+"+") {
+		URL.Scheme = URL.Scheme[len(Protocol)+1:]
+	} else if URL.Scheme == Protocol {
+		URL.Scheme = "tcp"
+	}
+	opts.Servers = append(opts.Servers, &URL)
+	if URL.User != nil {
+		opts.Username = URL.User.Username()
+		if pwd, exist := URL.User.Password(); exist {
+			opts.Password = pwd
+		}
+	}
+	opts.Namespace = strings.Trim(URL.Path, "/")
+	for key, vals := range URL.Query() {
+		switch key {
+		case OptClientID:
+			if len(vals) > 0 {
+				unescaped, err := url.QueryUnescape(vals[len(vals)-1])
+				if err != nil {
+					return nil, err
+				}
+				opts.ClientID = unescaped
+			}
+		}
+	}
+	return NewConnector(opts), nil
+}
+
+const (
+	// Protocol is the name of protocol for connector
+	Protocol = "mqtt"
+
+	// OptClientID is the property name in URL query
+	OptClientID = "client-id"
+)
+
+func init() {
+	mqhub.RegisterConnectorFactory(Protocol, ConnectorFactory)
 }
