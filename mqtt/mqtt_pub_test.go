@@ -157,14 +157,18 @@ func TestTopLevelSubscribe(t *testing.T) {
 	a.NoError(err)
 	defer watcher.Close()
 
-	println("WATCHED")
-	a.NoError(pub0.Comp0.state0.Update(101).Wait())
-	a.NoError(pub0.Comp0.state1.Update(201).Wait())
-
+	desc := client.Describe("pub0")
+	actor, err := desc.Endpoint("comp0", "a").Reactor()
+	if !a.NoError(err) {
+		return
+	}
+	a.NoError(actor.ConsumeMessage(mqhub.MsgFrom(101)).Wait())
 	state := <-stateCh
 	a.Equal(101, state.state)
 	a.Equal("pub0/comp0", state.component)
 	a.Equal("state0", state.endpoint)
+
+	a.NoError(pub0.Comp0.state1.Update(201).Wait())
 	state = <-stateCh
 	a.Equal(201, state.state)
 	a.Equal("pub0/comp0", state.component)

@@ -1,6 +1,8 @@
 package mqtt
 
 import (
+	"strings"
+
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/robotalks/mqhub.go/mqhub"
 )
@@ -15,6 +17,9 @@ type prefixWatcher struct {
 
 func watchPrefix(client paho.Client, target mqhub.Watchable,
 	prefix string, sink mqhub.MessageSink) (*prefixWatcher, error) {
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
 	w := &prefixWatcher{
 		client: client,
 		target: target,
@@ -46,7 +51,10 @@ func (w *prefixWatcher) watch(sink mqhub.MessageSink) error {
 }
 
 func (w *prefixWatcher) recvMessage(_ paho.Client, msg paho.Message) {
-	w.msgCh <- msg
+	_, _, endpointType := ParseTopic(msg.Topic(), w.prefix)
+	if endpointType == ":" {
+		w.msgCh <- msg
+	}
 }
 
 func (w *prefixWatcher) run(sink mqhub.MessageSink) {
