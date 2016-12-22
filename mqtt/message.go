@@ -9,12 +9,30 @@ import (
 
 // Message implements Message
 type Message struct {
-	raw paho.Message
+	ComponentID  string
+	EndpointName string
+	Raw          paho.Message
 }
 
 // NewMessage wraps mqtt message
-func NewMessage(msg paho.Message) *Message {
-	return &Message{raw: msg}
+func NewMessage(prefix string, msg paho.Message) *Message {
+	m := &Message{Raw: msg}
+	compID, endpointName, endpointType := ParseTopic(msg.Topic(), prefix)
+	if endpointType != "" {
+		m.ComponentID = compID
+		m.EndpointName = endpointName
+	}
+	return m
+}
+
+// Component implements Message
+func (m *Message) Component() string {
+	return m.ComponentID
+}
+
+// Endpoint implements Message
+func (m *Message) Endpoint() string {
+	return m.EndpointName
 }
 
 // Value implements Message
@@ -25,12 +43,12 @@ func (m *Message) Value() (interface{}, bool) {
 
 // IsState implements Message
 func (m *Message) IsState() bool {
-	return m.raw.Retained()
+	return m.Raw.Retained()
 }
 
 // As implements Message
 func (m *Message) As(out interface{}) error {
-	if data := m.raw.Payload(); data != nil {
+	if data := m.Raw.Payload(); data != nil {
 		return json.Unmarshal(data, out)
 	}
 	return nil
@@ -38,7 +56,7 @@ func (m *Message) As(out interface{}) error {
 
 // Payload implements EncodedPayload
 func (m *Message) Payload() ([]byte, error) {
-	return m.raw.Payload(), nil
+	return m.Raw.Payload(), nil
 }
 
 // Encode encodes original message into bytes

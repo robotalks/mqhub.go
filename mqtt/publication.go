@@ -2,6 +2,8 @@ package mqtt
 
 import (
 	"path"
+	"regexp"
+	"strings"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/robotalks/mqhub.go/mqhub"
@@ -20,6 +22,25 @@ func ActorTopic(topicBase, name string) string {
 // SubCompTopic creates a topic for sub-components
 func SubCompTopic(topicBase, id string) string {
 	return path.Join(topicBase, id)
+}
+
+var topicRelRe = regexp.MustCompile(`^(.+)/([:!])/([^/]+)$`)
+
+// ParseTopicRel parse topic without prefix (start with component ID)
+func ParseTopicRel(relativeTopic string) (compID, endpoint, endpointType string) {
+	result := topicRelRe.FindAllStringSubmatch(relativeTopic, -1)
+	if len(result) > 0 && len(result[0]) >= 4 {
+		return result[0][1], result[0][3], result[0][2]
+	}
+	return relativeTopic, "", ""
+}
+
+// ParseTopic parse topic including the prefix
+func ParseTopic(topic, prefix string) (compID, endpoint, endpointType string) {
+	if !strings.HasPrefix(topic, prefix) {
+		return topic, "", ""
+	}
+	return ParseTopicRel(topic[len(prefix):])
 }
 
 // Publication implements mqhub.Publication
@@ -112,7 +133,7 @@ func (p *Publication) unexport() {
 
 func (p *Publication) handleMessage(_ paho.Client, msg paho.Message) {
 	if sink := p.sinks[msg.Topic()]; sink != nil {
-		sink.ConsumeMessage(NewMessage(msg))
+		sink.ConsumeMessage(NewMessage(p.conn.topicPrefix, msg))
 	}
 }
 

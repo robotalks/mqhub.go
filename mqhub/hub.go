@@ -7,6 +7,10 @@ import (
 
 // Message is the abstraction of data entity passing through the hub
 type Message interface {
+	// Component is the ID of component emitted this message
+	Component() string
+	// Endpoint is the name of the endpoint
+	Endpoint() string
 	// Value gets the original value which is not encoded
 	Value() (interface{}, bool)
 	// IsState indicate this is a datapoint as state
@@ -33,6 +37,17 @@ type MessageSink interface {
 // MessageSource emits messages
 type MessageSource interface {
 	SinkMessage(MessageSink)
+}
+
+// Watchable is an object which others can watch for changes
+type Watchable interface {
+	Watch(MessageSink) (Watcher, error)
+}
+
+// Watcher is an established watching state
+type Watcher interface {
+	io.Closer
+	Watched() Watchable
 }
 
 // Identity represents an object with ID
@@ -66,6 +81,7 @@ type Composer interface {
 // Connector defines a general connector to message source/bus
 type Connector interface {
 	io.Closer
+	Watchable
 	Connect() Future
 	Publish(Component) (Publication, error)
 	Describe(componentID string) Descriptor
@@ -100,25 +116,20 @@ type Discoverer interface {
 
 // Descriptor describes a publication
 type Descriptor interface {
+	Watchable
 	ID() string
 	Endpoint(subPath string, endpoints ...string) EndpointRef
 }
 
 // EndpointRef references remote endpoints
 type EndpointRef interface {
-	// Watch watches data points
-	Watch(MessageSink) (EndpointWatcher, error)
+	Watchable
 	// Reactor connects to a reactor
-	Reactor() (MessageSink, error)
-}
-
-// EndpointWatcher references watched endpoints
-type EndpointWatcher interface {
-	io.Closer
+	Reactor() (ReactorConnection, error)
 }
 
 // ReactorConnection represents the connection to a reactor
 type ReactorConnection interface {
-	EndpointWatcher
+	io.Closer
 	MessageSink
 }

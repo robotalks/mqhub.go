@@ -16,7 +16,7 @@ import (
 type EnvBuilder interface {
 	Setup() error
 	TearDown() error
-	NewConnector(id string) (mqhub.Connector, error)
+	NewConnector(prefix, id string) (mqhub.Connector, error)
 }
 
 type RemoteEnvBuilder struct {
@@ -35,8 +35,8 @@ func (b *RemoteEnvBuilder) TearDown() error {
 	return nil
 }
 
-func (b *RemoteEnvBuilder) NewConnector(id string) (mqhub.Connector, error) {
-	return mqhub.NewConnector("mqtt+" + b.serverURL + "?client-id=" + url.QueryEscape(id))
+func (b *RemoteEnvBuilder) NewConnector(prefix, id string) (mqhub.Connector, error) {
+	return mqhub.NewConnector("mqtt+" + b.serverURL + "/" + prefix + "?client-id=" + url.QueryEscape(id))
 }
 
 var (

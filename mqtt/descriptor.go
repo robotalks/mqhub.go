@@ -14,6 +14,12 @@ type Descriptor struct {
 	conn *Connector
 }
 
+// Watch implements Descriptor
+func (d *Descriptor) Watch(sink mqhub.MessageSink) (mqhub.Watcher, error) {
+	return watchPrefix(d.conn.Client, d,
+		SubCompTopic(d.conn.topicPrefix, d.ComponentID), sink)
+}
+
 // ID implements Descriptor
 func (d *Descriptor) ID() string {
 	return d.ComponentID
@@ -36,9 +42,9 @@ type EndpointRef struct {
 }
 
 // Watch implements EndpointRef
-func (r *EndpointRef) Watch(sink mqhub.MessageSink) (mqhub.EndpointWatcher, error) {
+func (r *EndpointRef) Watch(sink mqhub.MessageSink) (mqhub.Watcher, error) {
 	w := &DataPointWatcher{
-		conn:      r.conn,
+		ref:       r,
 		subTopics: make(map[string]byte),
 		msgCh:     make(chan paho.Message),
 	}
@@ -58,7 +64,7 @@ func (r *EndpointRef) Watch(sink mqhub.MessageSink) (mqhub.EndpointWatcher, erro
 }
 
 // Reactor implements EndpointRef
-func (r *EndpointRef) Reactor() (mqhub.MessageSink, error) {
+func (r *EndpointRef) Reactor() (mqhub.ReactorConnection, error) {
 	if len(r.endpoints) != 1 {
 		panic("exactly one endpoint allowed to connect a reactor")
 	}
@@ -67,15 +73,20 @@ func (r *EndpointRef) Reactor() (mqhub.MessageSink, error) {
 
 // DataPointWatcher implements EndpointWatcher
 type DataPointWatcher struct {
-	conn      *Connector
+	ref       *EndpointRef
 	subTopics map[string]byte
 	msgCh     chan paho.Message
 }
 
-// Close implements EndpointWatcher
+// Close implements Watcher
 func (w *DataPointWatcher) Close() error {
 	close(w.msgCh)
 	return nil
+}
+
+// Watched implements Watcher
+func (w *DataPointWatcher) Watched() mqhub.Watchable {
+	return w.ref
 }
 
 func (w *DataPointWatcher) run(sink mqhub.MessageSink) {
@@ -84,13 +95,13 @@ func (w *DataPointWatcher) run(sink mqhub.MessageSink) {
 		if !ok {
 			break
 		}
-		sink.ConsumeMessage(NewMessage(msg))
+		sink.ConsumeMessage(NewMessage(w.ref.conn.topicPrefix, msg))
 	}
 	topics := make([]string, 0, len(w.subTopics))
 	for topic := range w.subTopics {
 		topics = append(topics, topic)
 	}
-	w.conn.Client.Unsubscribe(topics...)
+	w.ref.conn.Client.Unsubscribe(topics...)
 }
 
 func (w *DataPointWatcher) recvMessage(_ paho.Client, msg paho.Message) {

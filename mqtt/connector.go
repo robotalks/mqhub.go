@@ -89,6 +89,11 @@ func NewConnector(options *Options) *Connector {
 	return conn
 }
 
+// Watch implements Watchable
+func (c *Connector) Watch(sink mqhub.MessageSink) (mqhub.Watcher, error) {
+	return watchPrefix(c.Client, c, c.topicPrefix, sink)
+}
+
 // Connect connects to server
 func (c *Connector) Connect() mqhub.Future {
 	return &Future{token: c.Client.Connect()}

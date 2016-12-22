@@ -1,9 +1,12 @@
 package mqtt_test
 
 import (
+	"log"
 	"testing"
 
 	"github.com/robotalks/mqhub.go/mqhub"
+	"github.com/robotalks/mqhub.go/mqtt"
+	"github.com/robotalks/mqhub.go/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -53,13 +56,34 @@ func (p *Pub0) Endpoints() []mqhub.Endpoint {
 	return nil
 }
 
+type pubState struct {
+	state     int
+	component string
+	endpoint  string
+}
+
+func makeSinkFunc(t *testing.T, ch chan pubState) mqhub.MessageSink {
+	return mqhub.MessageSinkFunc(func(msg mqhub.Message) mqhub.Future {
+		var state pubState
+		assert.NoError(t, msg.As(&state.state))
+		state.component = msg.Component()
+		state.endpoint = msg.Endpoint()
+		log.Printf("MSG %s: %d", msg.(*mqtt.Message).Raw.Topic(), state.state)
+		ch <- state
+		return &mqhub.ImmediateFuture{}
+	})
+}
+
 func TestPublication(t *testing.T) {
 	a := assert.New(t)
-	pub0 := NewPub0()
-	host, err := TestEnv.NewConnector("publication-pub")
+	prefix := "pub-" + utils.UniqueID()
+
+	host, err := TestEnv.NewConnector(prefix, "publication-pub")
 	if !a.NoError(err) || !a.NoError(host.Connect().Wait()) {
 		return
 	}
+
+	pub0 := NewPub0()
 
 	_, err = host.Publish(pub0)
 	if !a.NoError(err) {
@@ -69,33 +93,80 @@ func TestPublication(t *testing.T) {
 	a.NoError(pub0.Comp0.state0.Update(2).Wait())
 	a.NoError(pub0.Comp0.state1.Update(20).Wait())
 
-	client, err := TestEnv.NewConnector("publication-client")
+	client, err := TestEnv.NewConnector(prefix, "publication-client")
 	if !a.NoError(err) || !a.NoError(client.Connect().Wait()) {
 		return
 	}
 
-	stateCh := make(chan int, 1)
-	sinkFunc := mqhub.MessageSinkFunc(func(msg mqhub.Message) mqhub.Future {
-		var state int
-		a.NoError(msg.As(&state))
-		stateCh <- state
-		return &mqhub.ImmediateFuture{}
-	})
+	stateCh := make(chan pubState, 1)
+	sinkFunc := makeSinkFunc(t, stateCh)
 
 	desc := client.Describe("pub0")
 	_, err = desc.Endpoint("comp0", "state0").Watch(sinkFunc)
 	a.NoError(err)
-	a.Equal(2, <-stateCh)
+	state := <-stateCh
+	a.Equal(2, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state0", state.endpoint)
 	actor, err := desc.Endpoint("comp0", "a").Reactor()
 	a.NoError(err)
 	err = actor.ConsumeMessage(mqhub.MsgFrom(100)).Wait()
 	if !a.NoError(err) {
 		return
 	}
-	a.Equal(100, <-stateCh)
+	state = <-stateCh
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state0", state.endpoint)
+	a.Equal(100, state.state)
 
 	_, err = desc.Endpoint("comp0", "state1").Watch(sinkFunc)
 	a.NoError(err)
 	a.NoError(pub0.Comp0.state1.Update(30).Wait())
-	a.Equal(30, <-stateCh)
+	state = <-stateCh
+	a.Equal(30, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state1", state.endpoint)
+}
+
+func TestTopLevelSubscribe(t *testing.T) {
+	a := assert.New(t)
+	prefix := "toplevel-sub-" + utils.UniqueID()
+
+	host, err := TestEnv.NewConnector(prefix, "subscribe-toplevel")
+	if !a.NoError(err) || !a.NoError(host.Connect().Wait()) {
+		return
+	}
+	defer host.Close()
+
+	pub0 := NewPub0()
+
+	_, err = host.Publish(pub0)
+	if !a.NoError(err) {
+		return
+	}
+
+	client, err := TestEnv.NewConnector(prefix, "subscribe-toplevel-client")
+	if !a.NoError(err) || !a.NoError(client.Connect().Wait()) {
+		return
+	}
+	defer client.Close()
+
+	stateCh := make(chan pubState, 2)
+	var watcher mqhub.Watcher
+	watcher, err = client.Watch(makeSinkFunc(t, stateCh))
+	a.NoError(err)
+	defer watcher.Close()
+
+	println("WATCHED")
+	a.NoError(pub0.Comp0.state0.Update(101).Wait())
+	a.NoError(pub0.Comp0.state1.Update(201).Wait())
+
+	state := <-stateCh
+	a.Equal(101, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state0", state.endpoint)
+	state = <-stateCh
+	a.Equal(201, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state1", state.endpoint)
 }
