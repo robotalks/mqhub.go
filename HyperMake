@@ -26,5 +26,5 @@ settings:
   exec-target: vendor
   exec-shell: /bin/bash
   docker:
-    image: 'robotalks/tbus-toolchain:latest'
+    image: 'robotalks/toolchain:latest'
     src-volume: /go/src/github.com/robotalks/mqhub.go
