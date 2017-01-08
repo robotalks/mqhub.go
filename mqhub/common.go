@@ -62,6 +62,15 @@ func NewRetainDataPoint(name string) *DataPoint {
 	return &DataPoint{Name: name, Retain: true}
 }
 
+// NewDataPointFromEndpointRef creates a datapoint using an EndpointRef
+func NewDataPointFromEndpointRef(ref EndpointRef) *DataPoint {
+	sink, ok := ref.(MessageSink)
+	if !ok {
+		panic("endpoint ref is not a message sink")
+	}
+	return &DataPoint{Sink: sink}
+}
+
 // ID implements Endpoint
 func (p *DataPoint) ID() string {
 	return p.Name

@@ -71,6 +71,17 @@ func (r *EndpointRef) Reactor() (mqhub.ReactorConnection, error) {
 	return &ReactorConn{conn: r.conn, topic: ActorTopic(r.topicBase, r.endpoints[0])}, nil
 }
 
+// ConsumeMessage implements MessageSink
+func (r *EndpointRef) ConsumeMessage(msg mqhub.Message) mqhub.Future {
+	encoded, err := Encode(msg)
+	if err != nil {
+		return &Future{err: err}
+	}
+	token := r.conn.Client.Publish(DataTopic(r.topicBase, r.endpoints[0]),
+		0, msg.IsState(), encoded)
+	return &Future{token: token}
+}
+
 // DataPointWatcher implements EndpointWatcher
 type DataPointWatcher struct {
 	ref       *EndpointRef
