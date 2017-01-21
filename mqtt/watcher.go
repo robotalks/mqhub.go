@@ -1,69 +1,44 @@
 package mqtt
 
 import (
-	"strings"
-
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/robotalks/mqhub.go/mqhub"
 )
 
-type prefixWatcher struct {
-	client paho.Client
-	target mqhub.Watchable
-	conn   *Connector
-	prefix string
-	msgCh  chan paho.Message
+type topicWatcher struct {
+	conn    *Connector
+	target  mqhub.Watchable
+	topic   string
+	sink    mqhub.MessageSink
+	handler *HandlerRef
 }
 
-func watchPrefix(client paho.Client, target mqhub.Watchable,
-	prefix string, sink mqhub.MessageSink) (*prefixWatcher, error) {
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
-	}
-	w := &prefixWatcher{
-		client: client,
+func watchTopic(conn *Connector, target mqhub.Watchable,
+	topic string, sink mqhub.MessageSink) (*topicWatcher, error) {
+	w := &topicWatcher{
+		conn:   conn,
 		target: target,
-		prefix: prefix,
-		msgCh:  make(chan paho.Message),
+		topic:  topic,
+		sink:   sink,
 	}
-	return w, w.watch(sink)
+	w.handler = MakeHandlerRef(w.recvMessage)
+	return w, w.conn.sub([]string{topic}, w.handler).Wait()
 }
 
 // Close implements Watcher
-func (w *prefixWatcher) Close() error {
-	close(w.msgCh)
+func (w *topicWatcher) Close() error {
+	w.conn.unsub([]string{w.topic}, w.handler)
 	return nil
 }
 
 // Watched implements Watcher
-func (w *prefixWatcher) Watched() mqhub.Watchable {
+func (w *topicWatcher) Watched() mqhub.Watchable {
 	return w.target
 }
 
-func (w *prefixWatcher) watch(sink mqhub.MessageSink) error {
-	token := w.client.Subscribe(w.prefix+"#", 0, w.recvMessage)
-	token.Wait()
-	if err := token.Error(); err != nil {
-		return err
+func (w *topicWatcher) recvMessage(_ paho.Client, msg paho.Message) {
+	_, endpoint := w.conn.parseTopic(msg.Topic())
+	if endpoint != "" {
+		w.sink.ConsumeMessage(w.conn.newMsg(msg))
 	}
-	go w.run(sink)
-	return nil
-}
-
-func (w *prefixWatcher) recvMessage(_ paho.Client, msg paho.Message) {
-	_, _, endpointType := ParseTopic(msg.Topic(), w.prefix)
-	if endpointType == ":" {
-		w.msgCh <- msg
-	}
-}
-
-func (w *prefixWatcher) run(sink mqhub.MessageSink) {
-	for {
-		msg, ok := <-w.msgCh
-		if !ok {
-			break
-		}
-		sink.ConsumeMessage(NewMessage(w.prefix, msg))
-	}
-	w.client.Unsubscribe(w.prefix + "#")
 }

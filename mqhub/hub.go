@@ -1,9 +1,6 @@
 package mqhub
 
-import (
-	"context"
-	"io"
-)
+import "io"
 
 // Message is the abstraction of data entity passing through the hub
 type Message interface {
@@ -98,38 +95,16 @@ type Publication interface {
 	Component() Component
 }
 
-// Advertiser makes publications discoverable
-type Advertiser interface {
-	Advertise(Publication) (Advertisement, error)
-}
-
-// Advertisement represents advertised publication
-type Advertisement interface {
-	io.Closer
-	Publication() Publication
-}
-
-// Discoverer discovers advertised publications
-type Discoverer interface {
-	Discover(context.Context) ([]Descriptor, error)
-}
-
 // Descriptor describes a publication
 type Descriptor interface {
 	Watchable
 	ID() string
-	Endpoint(subPath string, endpoints ...string) EndpointRef
+	SubComponent(id ...string) Descriptor
+	Endpoint(name string) EndpointRef
 }
 
 // EndpointRef references remote endpoints
 type EndpointRef interface {
 	Watchable
-	// Reactor connects to a reactor
-	Reactor() (ReactorConnection, error)
-}
-
-// ReactorConnection represents the connection to a reactor
-type ReactorConnection interface {
-	io.Closer
 	MessageSink
 }

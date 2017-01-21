@@ -3,45 +3,99 @@ package mqtt
 import (
 	"encoding/json"
 	"path"
-	"regexp"
 	"strings"
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 	"github.com/robotalks/mqhub.go/mqhub"
 )
 
-// DataTopic creates a topic for data points
-func DataTopic(topicBase, name string) string {
-	return path.Join(topicBase, ":", name)
-}
-
-// ActorTopic creates a topic for reactors
-func ActorTopic(topicBase, name string) string {
-	return path.Join(topicBase, "!", name)
+// EndpointTopic creates a topic for endpoints
+func EndpointTopic(topicBase, name string) string {
+	return path.Join(topicBase, name)
 }
 
 // SubCompTopic creates a topic for sub-components
-func SubCompTopic(topicBase, id string) string {
-	return path.Join(topicBase, id)
+func SubCompTopic(topicBase string, id ...string) string {
+	return path.Join(append([]string{topicBase}, id...)...)
 }
 
-var topicRelRe = regexp.MustCompile(`^(.+)/([:!])/([^/]+)$`)
-
 // ParseTopicRel parse topic without prefix (start with component ID)
-func ParseTopicRel(relativeTopic string) (compID, endpoint, endpointType string) {
-	result := topicRelRe.FindAllStringSubmatch(relativeTopic, -1)
-	if len(result) > 0 && len(result[0]) >= 4 {
-		return result[0][1], result[0][3], result[0][2]
-	}
-	return relativeTopic, "", ""
+func ParseTopicRel(relativeTopic string) (compID, endpoint string) {
+	compID, endpoint = path.Split(relativeTopic)
+	compID = strings.Trim(compID, "/")
+	return
 }
 
 // ParseTopic parse topic including the prefix
-func ParseTopic(topic, prefix string) (compID, endpoint, endpointType string) {
+func ParseTopic(topic, prefix string) (compID, endpoint string) {
+	if prefix == "" {
+		return ParseTopicRel(topic)
+	}
 	if !strings.HasPrefix(topic, prefix) {
-		return topic, "", ""
+		return topic, ""
 	}
 	return ParseTopicRel(topic[len(prefix):])
+}
+
+// TokenizeTopic split topic into tokens
+func TokenizeTopic(topic string) []string {
+	return strings.Split(topic, "/")
+}
+
+// TopicFilter defines a parsed topic filter
+type TopicFilter struct {
+	tokens      []string
+	multiLevels bool
+}
+
+// NewTopicFilter parses a topic filter in string
+func NewTopicFilter(filter string) *TopicFilter {
+	f := &TopicFilter{}
+	if filter == "#" {
+		f.multiLevels = true
+		return f
+	}
+
+	if strings.HasSuffix(filter, "/#") {
+		f.multiLevels = true
+		filter = filter[:len(filter)-2]
+	}
+	f.tokens = TokenizeTopic(filter)
+	return f
+}
+
+// String returns the filter in string
+func (f *TopicFilter) String() string {
+	s := strings.Join(f.tokens, "/")
+	if f.multiLevels {
+		if len(f.tokens) > 0 {
+			s += "/#"
+		} else {
+			s = "#"
+		}
+	}
+	return s
+}
+
+// MatchesTokenized indicates f matches the tokenized topic
+func (f *TopicFilter) MatchesTokenized(tokens []string) bool {
+	if len(f.tokens) > len(tokens) {
+		return false
+	}
+	for i := 0; i < len(f.tokens); i++ {
+		if f.tokens[i] != "+" && f.tokens[i] != tokens[i] {
+			return false
+		}
+	}
+	if len(f.tokens) < len(tokens) && !f.multiLevels {
+		return false
+	}
+	return true
+}
+
+// Matches indicates f matches the topic
+func (f *TopicFilter) Matches(topic string) bool {
+	return f.MatchesTokenized(strings.Split(topic, "/"))
 }
 
 // Message implements Message
@@ -54,11 +108,7 @@ type Message struct {
 // NewMessage wraps mqtt message
 func NewMessage(prefix string, msg paho.Message) *Message {
 	m := &Message{Raw: msg}
-	compID, endpointName, endpointType := ParseTopic(msg.Topic(), prefix)
-	if endpointType != "" {
-		m.ComponentID = compID
-		m.EndpointName = endpointName
-	}
+	m.ComponentID, m.EndpointName = ParseTopic(msg.Topic(), prefix)
 	return m
 }
 

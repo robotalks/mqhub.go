@@ -63,10 +63,12 @@ func TestMain(m *testing.M) {
 	if err := buildEnv(); err != nil {
 		log.Fatalln(err)
 	}
-	paho.ERROR = log.New(os.Stderr, "paho:ERR ", log.LstdFlags)
-	paho.CRITICAL = log.New(os.Stderr, "paho:CRI ", log.LstdFlags)
-	paho.WARN = log.New(os.Stderr, "paho:WRN ", log.LstdFlags)
-	paho.DEBUG = log.New(os.Stderr, "paho:DBG ", log.LstdFlags)
+	if os.Getenv("TEST_PAHO_MUTE") == "" {
+		paho.ERROR = log.New(os.Stderr, "paho:ERR ", log.LstdFlags)
+		paho.CRITICAL = log.New(os.Stderr, "paho:CRI ", log.LstdFlags)
+		paho.WARN = log.New(os.Stderr, "paho:WRN ", log.LstdFlags)
+		paho.DEBUG = log.New(os.Stderr, "paho:DBG ", log.LstdFlags)
+	}
 	code := m.Run()
 	TestEnv.TearDown()
 	os.Exit(code)

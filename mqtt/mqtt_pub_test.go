@@ -3,6 +3,7 @@ package mqtt_test
 import (
 	"log"
 	"testing"
+	"time"
 
 	"github.com/robotalks/mqhub.go/mqhub"
 	"github.com/robotalks/mqhub.go/mqtt"
@@ -69,9 +70,18 @@ func makeSinkFunc(t *testing.T, ch chan pubState) mqhub.MessageSink {
 		state.component = msg.Component()
 		state.endpoint = msg.Endpoint()
 		log.Printf("MSG %s: %d", msg.(*mqtt.Message).Raw.Topic(), state.state)
-		ch <- state
+		go func() { ch <- state }()
 		return &mqhub.ImmediateFuture{}
 	})
+}
+
+func recvState(t *testing.T, stateCh chan pubState) (state pubState) {
+	select {
+	case <-time.After(3 * time.Second):
+		t.Error("timeout")
+	case state = <-stateCh:
+	}
+	return
 }
 
 func TestPublication(t *testing.T) {
@@ -98,31 +108,42 @@ func TestPublication(t *testing.T) {
 		return
 	}
 
-	stateCh := make(chan pubState, 1)
+	stateCh := make(chan pubState, 2)
 	sinkFunc := makeSinkFunc(t, stateCh)
 
-	desc := client.Describe("pub0")
-	_, err = desc.Endpoint("comp0", "state0").Watch(sinkFunc)
+	desc := client.Describe("pub0").SubComponent("comp0")
+	_, err = desc.Endpoint("state0").Watch(sinkFunc)
 	a.NoError(err)
-	state := <-stateCh
+	// add two handlers to the same topic, should receive message twice
+	_, err = desc.Endpoint("state0").Watch(sinkFunc)
+	a.NoError(err)
+	state := recvState(t, stateCh)
 	a.Equal(2, state.state)
 	a.Equal("pub0/comp0", state.component)
 	a.Equal("state0", state.endpoint)
-	actor, err := desc.Endpoint("comp0", "a").Reactor()
-	a.NoError(err)
+	state = recvState(t, stateCh)
+	a.Equal(2, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state0", state.endpoint)
+
+	actor := desc.Endpoint("a")
 	err = actor.ConsumeMessage(mqhub.MsgFrom(100)).Wait()
 	if !a.NoError(err) {
 		return
 	}
-	state = <-stateCh
+	state = recvState(t, stateCh)
 	a.Equal("pub0/comp0", state.component)
 	a.Equal("state0", state.endpoint)
 	a.Equal(100, state.state)
+	state = recvState(t, stateCh)
+	a.Equal(100, state.state)
+	a.Equal("pub0/comp0", state.component)
+	a.Equal("state0", state.endpoint)
 
-	_, err = desc.Endpoint("comp0", "state1").Watch(sinkFunc)
+	_, err = desc.Endpoint("state1").Watch(sinkFunc)
 	a.NoError(err)
 	a.NoError(pub0.Comp0.state1.Update(30).Wait())
-	state = <-stateCh
+	state = recvState(t, stateCh)
 	a.Equal(30, state.state)
 	a.Equal("pub0/comp0", state.component)
 	a.Equal("state1", state.endpoint)
@@ -157,19 +178,22 @@ func TestTopLevelSubscribe(t *testing.T) {
 	a.NoError(err)
 	defer watcher.Close()
 
-	desc := client.Describe("pub0")
-	actor, err := desc.Endpoint("comp0", "a").Reactor()
-	if !a.NoError(err) {
-		return
-	}
+	desc := client.Describe("pub0").SubComponent("comp0")
+	actor := desc.Endpoint("a")
 	a.NoError(actor.ConsumeMessage(mqhub.MsgFrom(101)).Wait())
-	state := <-stateCh
-	a.Equal(101, state.state)
-	a.Equal("pub0/comp0", state.component)
-	a.Equal("state0", state.endpoint)
+	stateMap := make(map[string]int)
+	for i := 0; i < 2; i++ {
+		state := recvState(t, stateCh)
+		a.Equal("pub0/comp0", state.component)
+		stateMap[state.endpoint] = state.state
+	}
+	a.Contains(stateMap, "state0")
+	a.Equal(101, stateMap["state0"])
+	a.Contains(stateMap, "a")
+	a.Equal(101, stateMap["a"])
 
 	a.NoError(pub0.Comp0.state1.Update(201).Wait())
-	state = <-stateCh
+	state := recvState(t, stateCh)
 	a.Equal(201, state.state)
 	a.Equal("pub0/comp0", state.component)
 	a.Equal("state1", state.endpoint)

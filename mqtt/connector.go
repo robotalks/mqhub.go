@@ -69,8 +69,7 @@ type Connector struct {
 	topicPrefix string
 	exports     []*Publication
 	lock        sync.RWMutex
-	advertisers map[string]*Advertiser
-	advLock     sync.Mutex
+	handlers    *TopicHandlerMap
 }
 
 // NewConnector creates a connector
@@ -81,17 +80,18 @@ func NewConnector(options *Options) *Connector {
 	conn := &Connector{
 		Client:      paho.NewClient(options.clientOptions()),
 		topicPrefix: options.Namespace,
-		advertisers: make(map[string]*Advertiser),
+		handlers:    NewTopicHandlerMap(),
 	}
 	if conn.topicPrefix != "" && !strings.HasSuffix(conn.topicPrefix, "/") {
 		conn.topicPrefix += "/"
 	}
+	conn.handlers.prefix = conn.topicPrefix
 	return conn
 }
 
 // Watch implements Watchable
 func (c *Connector) Watch(sink mqhub.MessageSink) (mqhub.Watcher, error) {
-	return watchPrefix(c.Client, c, c.topicPrefix, sink)
+	return watchTopic(c, c, "#", sink)
 }
 
 // Connect connects to server
@@ -123,29 +123,42 @@ func (c *Connector) Publish(comp mqhub.Component) (mqhub.Publication, error) {
 func (c *Connector) Describe(componentID string) mqhub.Descriptor {
 	return &Descriptor{
 		ComponentID: componentID,
-		Topic:       c.topicPrefix + componentID,
+		SubTopic:    componentID,
 		conn:        c,
 	}
 }
 
-// Advertiser creates an advertiser on specified topic
-func (c *Connector) Advertiser(topic string) (*Advertiser, error) {
-	c.advLock.Lock()
-	defer c.advLock.Unlock()
-	ad := c.advertisers[topic]
-	if ad == nil {
-		ad = newAdvertiser(c, topic)
-		if err := ad.bind(); err != nil {
-			return nil, err
-		}
-		c.advertisers[topic] = ad
-	}
-	return ad, nil
+func (c *Connector) parseTopic(topic string) (string, string) {
+	return ParseTopic(topic, c.topicPrefix)
 }
 
-// Discover returns a discoverer associated with a topic
-func (c *Connector) Discover(topic string) *Discoverer {
-	return &Discoverer{conn: c, topic: topic}
+func (c *Connector) newMsg(msg paho.Message) *Message {
+	return NewMessage(c.topicPrefix, msg)
+}
+
+func (c *Connector) sub(topics []string, handler *HandlerRef) *Future {
+	subs := c.handlers.Add(topics, handler)
+	subsMap := make(map[string]byte)
+	for _, topic := range subs {
+		subsMap[c.topicPrefix+topic] = 1
+	}
+	return &Future{token: c.Client.SubscribeMultiple(subsMap, c.handlers.HandleMessage)}
+}
+
+func (c *Connector) unsub(topics []string, handler *HandlerRef) *Future {
+	unsubs := c.handlers.Del(topics, handler)
+	for i, topic := range unsubs {
+		unsubs[i] = c.topicPrefix + topic
+	}
+	return &Future{token: c.Client.Unsubscribe(unsubs...)}
+}
+
+func (c *Connector) pub(topic string, msg mqhub.Message) *Future {
+	encoded, err := Encode(msg)
+	if err != nil {
+		return &Future{err: err}
+	}
+	return &Future{token: c.Client.Publish(c.topicPrefix+topic, 0, msg.IsState(), encoded)}
 }
 
 func (c *Connector) removePub(pub *Publication) {

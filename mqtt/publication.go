@@ -9,12 +9,12 @@ import (
 
 // Publication implements mqhub.Publication
 type Publication struct {
-	conn  *Connector
-	comp  mqhub.Component
-	topic string
-	desc  Descriptor
-	emits map[string]*DataEmitter
-	sinks map[string]*DataSink
+	conn    *Connector
+	comp    mqhub.Component
+	desc    Descriptor
+	emits   map[string]*DataEmitter
+	sinks   map[string]*DataSink
+	handler *HandlerRef
 }
 
 // Component implements Publication
@@ -31,15 +31,18 @@ func (p *Publication) Close() error {
 
 func newPublication(conn *Connector, comp mqhub.Component) *Publication {
 	pub := &Publication{
-		conn:  conn,
-		comp:  comp,
-		topic: SubCompTopic(conn.topicPrefix, comp.ID()),
+		conn: conn,
+		comp: comp,
+		desc: Descriptor{
+			ComponentID: comp.ID(),
+			SubTopic:    comp.ID(),
+			conn:        conn,
+		},
 		emits: make(map[string]*DataEmitter),
 		sinks: make(map[string]*DataSink),
 	}
-	pub.desc.ComponentID = comp.ID()
-	pub.desc.Topic = pub.topic
-	pub.populate(pub.topic, comp)
+	pub.handler = MakeHandlerRef(pub.handleMessage)
+	pub.populate(pub.desc.SubTopic, comp)
 	return pub
 }
 
@@ -47,7 +50,7 @@ func (p *Publication) populate(topic string, comp mqhub.Component) {
 	endpoints := comp.Endpoints()
 	for _, endpoint := range endpoints {
 		if datapoint, ok := endpoint.(mqhub.MessageSource); ok {
-			endpointTopic := DataTopic(topic, endpoint.ID())
+			endpointTopic := EndpointTopic(topic, endpoint.ID())
 			p.emits[endpointTopic] = &DataEmitter{
 				pub:    p,
 				topic:  endpointTopic,
@@ -55,7 +58,7 @@ func (p *Publication) populate(topic string, comp mqhub.Component) {
 			}
 		}
 		if reactor, ok := endpoint.(mqhub.MessageSink); ok {
-			endpointTopic := ActorTopic(topic, endpoint.ID())
+			endpointTopic := EndpointTopic(topic, endpoint.ID())
 			p.sinks[endpointTopic] = &DataSink{
 				pub:   p,
 				topic: endpointTopic,
@@ -72,13 +75,11 @@ func (p *Publication) populate(topic string, comp mqhub.Component) {
 }
 
 func (p *Publication) export() error {
-	topics := make(map[string]byte)
+	topics := make([]string, 0, len(p.sinks))
 	for topic := range p.sinks {
-		topics[topic] = 0
+		topics = append(topics, topic)
 	}
-	token := p.conn.Client.SubscribeMultiple(topics, p.handleMessage)
-	token.Wait()
-	err := token.Error()
+	err := p.conn.sub(topics, p.handler).Wait()
 	if err == nil {
 		for _, emit := range p.emits {
 			emit.bind()
@@ -92,12 +93,15 @@ func (p *Publication) unexport() {
 		emit.unbind()
 	}
 	topics := make([]string, 0, len(p.sinks))
-	p.conn.Client.Unsubscribe(topics...)
+	p.conn.unsub(topics, p.handler)
 }
 
 func (p *Publication) handleMessage(_ paho.Client, msg paho.Message) {
-	if sink := p.sinks[msg.Topic()]; sink != nil {
-		sink.ConsumeMessage(NewMessage(p.conn.topicPrefix, msg))
+	compID, endpoint := p.conn.parseTopic(msg.Topic())
+	if endpoint != "" {
+		if sink := p.sinks[EndpointTopic(compID, endpoint)]; sink != nil {
+			sink.ConsumeMessage(p.conn.newMsg(msg))
+		}
 	}
 }
 
@@ -110,11 +114,7 @@ type DataEmitter struct {
 
 // ConsumeMessage emits the message
 func (e *DataEmitter) ConsumeMessage(msg mqhub.Message) mqhub.Future {
-	encoded, err := Encode(msg)
-	if err != nil {
-		return &Future{err: err}
-	}
-	return &Future{token: e.pub.conn.Client.Publish(e.topic, 0, msg.IsState(), encoded)}
+	return e.pub.conn.pub(e.topic, msg)
 }
 
 func (e *DataEmitter) bind() {
