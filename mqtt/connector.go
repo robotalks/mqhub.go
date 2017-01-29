@@ -140,7 +140,7 @@ func (c *Connector) sub(topics []string, handler *HandlerRef) *Future {
 	subs := c.handlers.Add(topics, handler)
 	subsMap := make(map[string]byte)
 	for _, topic := range subs {
-		subsMap[c.topicPrefix+topic] = 1
+		subsMap[c.topicPrefix+topic] = 0
 	}
 	return &Future{token: c.Client.SubscribeMultiple(subsMap, c.handlers.HandleMessage)}
 }
